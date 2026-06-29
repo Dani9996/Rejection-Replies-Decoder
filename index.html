@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rejection Decoder</title>
+<style>
+  :root {
+    --ink: #1a1d1a;
+    --paper: #f0ece1;
+    --paper-2: #e6e0d2;
+    --line: #c9c1ac;
+    --muted: #6b6555;
+    --flag-auto: #b5642a;     /* burnt amber for automated */
+    --flag-ai: #3f6f6a;       /* deep teal for AI */
+    --flag-low: #8a8a7a;      /* grey for low signal */
+    --bar-track: #d8d1bf;
+    --accent: #2d3a2e;
+    --shadow: 0 1px 0 #fff8, 0 12px 30px -18px #1a1d1a55;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, monospace;
+    background: var(--paper);
+    background-image: radial-gradient(transparent 1px, #00000003 1px);
+    background-size: 4px 4px;
+    color: var(--ink);
+    line-height: 1.5;
+    min-height: 100vh;
+    padding: clamp(16px, 4vw, 48px);
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+
+  header { margin-bottom: 28px; border-bottom: 2px solid var(--ink); padding-bottom: 18px; }
+  .eyebrow {
+    font-size: 11px; letter-spacing: 0.28em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 10px;
+  }
+  h1 {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: clamp(32px, 7vw, 56px);
+    font-weight: 700; letter-spacing: -0.02em; line-height: 0.98;
+  }
+  h1 em { font-style: italic; color: var(--flag-auto); }
+  .sub { margin-top: 12px; color: var(--muted); font-size: 13px; max-width: 56ch; }
+
+  .grid { display: grid; gap: 20px; margin-top: 26px; }
+  @media (min-width: 760px) { .grid { grid-template-columns: 1fr 1fr; align-items: start; } }
+
+  label.field-label {
+    display: block; font-size: 11px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 8px;
+  }
+  textarea {
+    width: 100%; min-height: 280px; resize: vertical;
+    background: #fbf9f3; border: 1.5px solid var(--line); border-radius: 2px;
+    padding: 14px; font: inherit; font-size: 13px; color: var(--ink);
+    box-shadow: inset 0 1px 4px #00000008;
+  }
+  textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+
+  .btn-row { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  button {
+    font: inherit; font-size: 13px; cursor: pointer;
+    padding: 11px 20px; border-radius: 2px; border: 1.5px solid var(--ink);
+    background: var(--ink); color: var(--paper); letter-spacing: 0.04em;
+    transition: transform .08s ease, background .15s ease;
+  }
+  button:hover { transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.ghost { background: transparent; color: var(--ink); }
+  button.ghost:hover { background: #00000008; }
+
+  .results { min-height: 100px; }
+  .placeholder {
+    border: 1.5px dashed var(--line); border-radius: 2px; padding: 28px 20px;
+    color: var(--muted); font-size: 13px; text-align: center;
+  }
+
+  .verdict { border: 1.5px solid var(--line); border-radius: 2px; background: #fbf9f3; margin-bottom: 16px; overflow: hidden; }
+  .verdict-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 14px 16px 10px; gap: 12px;
+  }
+  .verdict-title { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+  .verdict-label { font-family: Georgia, serif; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+  .v-auto .verdict-label { color: var(--flag-auto); }
+  .v-ai .verdict-label { color: var(--flag-ai); }
+  .v-low .verdict-label { color: var(--flag-low); }
+  .track { height: 8px; background: var(--bar-track); margin: 0 16px 12px; border-radius: 99px; overflow: hidden; }
+  .fill { height: 100%; width: 0; border-radius: 99px; transition: width .6s cubic-bezier(.2,.8,.2,1); }
+  .v-auto .fill { background: var(--flag-auto); }
+  .v-ai .fill { background: var(--flag-ai); }
+  .v-low .fill { background: var(--flag-low); }
+  .score-num { font-size: 12px; color: var(--muted); }
+
+  .hits { padding: 0 16px 14px; }
+  .hits h4 { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin: 10px 0 6px; }
+  .chip {
+    display: inline-block; font-size: 11px; padding: 3px 8px; margin: 0 4px 4px 0;
+    background: var(--paper-2); border: 1px solid var(--line); border-radius: 2px; color: var(--ink);
+  }
+  .chip.word { font-style: italic; }
+  .notes { font-size: 12px; color: var(--muted); padding: 10px 16px 14px; border-top: 1px dashed var(--line); }
+  .notes li { margin-left: 16px; margin-bottom: 3px; }
+
+  footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); max-width: 60ch; }
+  .examples { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .examples button { font-size: 11px; padding: 6px 12px; background: transparent; color: var(--muted); border-color: var(--line); }
+  .examples button:hover { color: var(--ink); border-color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Email forensics · runs entirely in your browser</div>
+    <h1>Rejection <em>Decoder</em></h1>
+    <p class="sub">Paste a job rejection email. This reads it for two things: whether it's a mass-mailed template, and whether the wording looks AI-written. Nothing is uploaded — the analysis happens on your device.</p>
+  </header>
+
+  <div class="grid">
+    <div>
+      <label class="field-label" for="email">Rejection email text</label>
+      <textarea id="email" placeholder="Dear Applicant,
+
+Thank you for your interest in the position. After careful consideration, we have decided to move forward with other candidates..."></textarea>
+      <div class="btn-row">
+        <button id="analyze">Analyze</button>
+        <button id="clear" class="ghost">Clear</button>
+      </div>
+      <div class="examples">
+        <button data-ex="auto">Try a templated one</button>
+        <button data-ex="ai">Try an AI one</button>
+        <button data-ex="human">Try a human one</button>
+      </div>
+    </div>
+
+    <div class="results" id="results">
+      <div class="placeholder">Results will appear here once you analyze an email.</div>
+    </div>
+  </div>
+
+  <footer>
+    These are heuristic estimates, not proof. Email text alone can't conclusively show who or what wrote it — a person can send boilerplate, and a company can hand-write something that trips the AI flag. Weigh the scores alongside context like the sender address and response time.
+  </footer>
+</div>
+
+<script>
+const TEMPLATE_PHRASES = [
+  /thank you for (your )?(interest|application|applying)/i,
+  /after (careful(ly)? )?(consider(ing|ation)|review(ing)?)/i,
+  /we (have )?decided (not )?to (move|proceed) forward/i,
+  /we will not be (moving|proceeding) forward/i,
+  /other candidates/i,
+  /more closely (match(ed|es)?|align(ed|s)?)/i,
+  /we (regret|are sorry) to inform you/i,
+  /we encourage you to (apply|re-?apply)/i,
+  /keep your (resume|details|information) on file/i,
+  /we wish you (the best|success|luck)/i,
+  /future opportunit(y|ies)/i,
+  /a (large|high) (number|volume) of applicat/i,
+  /do not reply to this (email|message)/i,
+  /this (is|was) an automated/i,
+  /unfortunately,? (we|at this time)/i,
+  /competitive (pool|field)/i,
+  /not (a |to )?(move|proceed) (to|with) the next (stage|step|round)/i,
+];
+const AI_PHRASES = [
+  /i (completely )?understand (that|how)/i,
+  /please (don'?t|do not) hesitate to/i,
+  /i hope this (email|message) finds you well/i,
+  /i wanted to (personally )?reach out/i,
+  /while your (background|experience|qualifications) (is|are|were) impressive/i,
+  /we were (truly |genuinely )?impressed/i,
+  /it'?s clear that you/i,
+  /rest assured/i,
+  /i want to (acknowledge|recognize)/i,
+  /navigating (this|the) (process|journey)/i,
+  /i (truly|genuinely|sincerely) appreciate/i,
+  /that (said|being said)/i,
+  /a testament to/i,
+  /speaks volumes/i,
+  /wealth of (experience|knowledge)/i,
+  /in today'?s (competitive|fast-?paced)/i,
+];
+const AI_LEXICAL = ["delve","moreover","furthermore","additionally","consequently","underscore","underscores","holistic","robust","leverage","tapestry","realm","landscape","comprehensive","nuanced","pivotal","showcase","elevate","seamless","synergy","esteemed","endeavor","foster","embark"];
+const AUTOMATION_HEADERS = [
+  /no-?reply@/i, /do-?not-?reply@/i, /noreply@/i, /automated@/i,
+  /mailer-?daemon/i, /unsubscribe/i,
+  /ref(erence)?\s*(#|no\.?|number)\s*[:#]?\s*\w+/i,
+  /requisition\s*(id|#|number)/i, /\bATS\b/,
+  /powered by (greenhouse|lever|workday|icims|taleo|smartrecruiters)/i,
+];
+
+function findHits(patterns, text) {
+  const hits = [];
+  for (const p of patterns) { const m = text.match(p); if (m) hits.push(m[0].trim()); }
+  return hits;
+}
+
+function analyze(text) {
+  const lowered = text.toLowerCase();
+  const words = (lowered.match(/[a-z']+/g) || []);
+  const nWords = Math.max(words.length, 1);
+  const notes = [];
+
+  const tmplHits = findHits(TEMPLATE_PHRASES, text);
+  const headHits = findHits(AUTOMATION_HEADERS, text);
+  let auto = Math.min(tmplHits.length / 4, 1) * 0.7 + Math.min(headHits.length / 2, 1) * 0.6;
+  if (!/^(hi|hello|dear)\s+[a-z][a-z'.-]+/im.test(text.trim())) {
+    auto += 0.1; notes.push("No personalized greeting with a first name detected.");
+  }
+  auto = Math.min(auto, 1);
+
+  const aiPhraseHits = findHits(AI_PHRASES, text);
+  const lexHits = AI_LEXICAL.filter(w => new RegExp("\\b" + w + "\\b").test(lowered));
+  let phrase = Math.min(aiPhraseHits.length / 3, 1) * 0.55;
+  const lexDensity = lexHits.length / (nWords / 100);
+  const lex = Math.min(lexDensity / 2, 1) * 0.35;
+
+  const sentences = text.split(/[.!?]+/).filter(s => s.trim());
+  if (sentences.length >= 4) {
+    const lens = sentences.map(s => s.trim().split(/\s+/).length);
+    const mean = lens.reduce((a,b)=>a+b,0)/lens.length;
+    const variance = lens.reduce((a,b)=>a+(b-mean)**2,0)/lens.length;
+    if (mean > 8 && variance < 12) { notes.push("Sentence lengths are unusually uniform."); phrase += 0.1; }
+  }
+  const ai = Math.min(phrase + lex, 1);
+
+  const autoHits = [...tmplHits, ...headHits];
+  const aiHits = [...aiPhraseHits, ...lexHits.map(w => "word:" + w)];
+  if (!autoHits.length && !aiHits.length) notes.push("Few or no signal phrases found; result is low-confidence.");
+
+  return {
+    automated: Math.round(auto*100)/100,
+    ai: Math.round(ai*100)/100,
+    autoHits, aiHits, notes
+  };
+}
+
+function label(score) {
+  if (score >= 0.75) return "Very likely";
+  if (score >= 0.5)  return "Likely";
+  if (score >= 0.25) return "Possible";
+  return "Unlikely";
+}
+
+function verdictBlock(title, score, hits, kind) {
+  const cls = score >= 0.25 ? (kind === "auto" ? "v-auto" : "v-ai") : "v-low";
+  const chips = hits.length
+    ? `<div class="hits"><h4>Signals found</h4>${hits.map(h => {
+        const isWord = h.startsWith("word:");
+        return `<span class="chip${isWord ? " word" : ""}">${isWord ? h.slice(5) : escapeHtml(h)}</span>`;
+      }).join("")}</div>`
+    : "";
+  return `<div class="verdict ${cls}">
+    <div class="verdict-head">
+      <span class="verdict-title">${title}</span>
+      <span class="verdict-label">${label(score)}</span>
+    </div>
+    <div class="track"><div class="fill" style="width:${Math.round(score*100)}%"></div></div>
+    <div style="padding:0 16px 12px"><span class="score-num">confidence score ${score.toFixed(2)} / 1.00</span></div>
+    ${chips}
+  </div>`;
+}
+
+function escapeHtml(s){return s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+
+function render(r) {
+  let html = verdictBlock("Automated / templated", r.automated, r.autoHits, "auto");
+  html += verdictBlock("AI-generated", r.ai, r.aiHits, "ai");
+  if (r.notes.length) {
+    html += `<div class="verdict v-low"><div class="notes"><strong style="text-transform:uppercase;font-size:10px;letter-spacing:.16em">Notes</strong><ul>${r.notes.map(n=>`<li>${escapeHtml(n)}</li>`).join("")}</ul></div></div>`;
+  }
+  document.getElementById("results").innerHTML = html;
+  requestAnimationFrame(()=>document.querySelectorAll(".fill").forEach(f=>f.style.width=f.style.width));
+}
+
+const EXAMPLES = {
+  auto: `From: no-reply@careers.example.com
+Subject: Your application
+
+Dear Applicant,
+
+Thank you for your interest in the Software Engineer position. After careful consideration, we have decided to move forward with other candidates whose experience more closely matches our current needs. Due to the high volume of applications, we are unable to provide individual feedback. We will keep your resume on file for future opportunities. We wish you the best of luck. Please do not reply to this email. Requisition ID 48213. Unsubscribe.`,
+  ai: `Hi Marco,
+
+I hope this email finds you well. I wanted to personally reach out regarding your application. While your background is impressive and a testament to your dedication, we have decided to move forward with another candidate. Please don't hesitate to reach out in the future. I truly appreciate the time you invested, and rest assured your wealth of experience will serve you well as you navigate this competitive landscape. Moreover, I want to acknowledge how robust your portfolio is.`,
+  human: `Marco,
+
+Spoke with the team this morning. It was close but we went with someone who'd already shipped the exact payments integration we need next quarter. Honestly your take-home was one of the cleaner ones. If the contract role opens up in autumn I'll ping you directly. Grab a coffee sometime?
+
+Lena`
+};
+
+const ta = document.getElementById("email");
+document.getElementById("analyze").addEventListener("click", () => {
+  const t = ta.value.trim();
+  if (!t) { document.getElementById("results").innerHTML = `<div class="placeholder">Paste an email first, or try one of the examples below the box.</div>`; return; }
+  render(analyze(t));
+});
+document.getElementById("clear").addEventListener("click", () => {
+  ta.value = ""; document.getElementById("results").innerHTML = `<div class="placeholder">Results will appear here once you analyze an email.</div>`; ta.focus();
+});
+document.querySelectorAll(".examples button").forEach(b => b.addEventListener("click", () => {
+  ta.value = EXAMPLES[b.dataset.ex]; render(analyze(ta.value));
+}));
+</script>
+</body>
+</html>
